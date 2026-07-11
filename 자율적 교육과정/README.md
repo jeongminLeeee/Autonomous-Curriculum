@@ -1,0 +1,1 @@
+# Disaster Simulator\nStarter project structure.
