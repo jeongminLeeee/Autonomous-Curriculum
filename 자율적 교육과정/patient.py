@@ -136,6 +136,10 @@ class Patient:
         if self.distance_to_target() <= 1:
             self.state = PatientState.WAITING
 
+        print(
+            f"Patient {self.id}: ({self.x:.6f}, {self.y:.6f})"
+        )    
+
     # ----------------------------------
     # 생존 시간 감소
     # ----------------------------------
