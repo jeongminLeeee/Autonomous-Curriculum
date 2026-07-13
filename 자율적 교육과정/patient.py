@@ -75,17 +75,17 @@ class Patient:
         # 위급도별 설정
         # -----------------------------
         if severity == Severity.RED:
-            self.move_speed = 0.5          # m/s
+            self.move_speed = 50          # m/s
             self.treatment_time = 20 * 60  # 20분
             self.remaining_survival = 10 * 60  # 10분
 
         elif severity == Severity.YELLOW:
-            self.move_speed = 1.0
+            self.move_speed = 50
             self.treatment_time = 10 * 60
             self.remaining_survival = 20 * 60
 
         else:
-            self.move_speed = 1.4
+            self.move_speed = 50
             self.treatment_time = 5 * 60
             self.remaining_survival = math.inf
 
