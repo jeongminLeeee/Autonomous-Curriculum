@@ -41,9 +41,13 @@ class Simulation:
         self,
         patients,
         hospitals,
+        map_loader,
         duration=3600,
         dt=1
+
     ):
+        
+        self.map_loader = map_loader
 
 
         # ----------------------------------------------------
