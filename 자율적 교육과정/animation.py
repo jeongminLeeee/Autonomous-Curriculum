@@ -14,6 +14,7 @@
 
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
+import osmnx as ox
 
 from patient import PatientState
 
@@ -40,8 +41,7 @@ class SimulationAnimation:
 
     def __init__(
         self,
-        simulation,
-        map_image=None
+        simulation
     ):
 
 
@@ -61,7 +61,7 @@ class SimulationAnimation:
 
         # 지도 이미지
 
-        self.map_image = map_image
+        self.map_loader = None
 
 
 
@@ -115,17 +115,18 @@ class SimulationAnimation:
         # 지도 표시
         # -------------------------
 
-        if self.map_image is not None:
+        self.map_loader = self.simulation.map_loader
 
-
-            img = plt.imread(
-                self.map_image
-            )
-
-
-            self.ax.imshow(
-                img
-            )
+        ox.plot_graph(
+            self.map_loader.graph,
+            ax=self.ax,
+            node_size=0,
+            edge_color="gray",
+            edge_linewidth=0.5,
+            bgcolor="white",
+            show=False,
+            close=False
+        )
 
 
 
@@ -138,13 +139,16 @@ class SimulationAnimation:
         )
 
 
-        self.ax.set_xlabel(
-            "X"
+        boundary = self.map_loader.get_boundary()
+
+        self.ax.set_xlim(
+            boundary["west"],
+            boundary["east"]
         )
 
-
-        self.ax.set_ylabel(
-            "Y"
+        self.ax.set_ylim(
+            boundary["south"],
+            boundary["north"]
         )
 
 
@@ -465,9 +469,8 @@ class SimulationAnimation:
         return (
 
             self.patient_scatter,
-
+            self.hospital_scatter,
             self.time_text,
-
             self.info_text
 
         )
@@ -497,7 +500,7 @@ class SimulationAnimation:
 
 
 
-        animation = FuncAnimation(
+        self.animation = FuncAnimation(
 
             self.fig,
 
@@ -517,7 +520,7 @@ class SimulationAnimation:
 
 
 
-        return animation
+        return self.animation
 
 
 
