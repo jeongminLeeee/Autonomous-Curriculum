@@ -367,6 +367,10 @@ class Simulation:
 
             patient.move()
 
+            print(
+                f"Patient {patient.id}: ({patient.x:.6f}, {patient.y:.6f})"
+            )
+
 
 
             # 도착 확인
@@ -740,6 +744,8 @@ class Simulation:
 
         # 1.
         # 환자 이동
+        print("step:", self.current_time)
+        print("update_patient_movement 실행")
 
         self.update_patient_movement()
 
