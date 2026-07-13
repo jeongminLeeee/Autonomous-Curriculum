@@ -1,741 +1,1267 @@
 # ============================================================
-# ui.py
+# simulation.py
 #
-# 재난 의료시설 최적화 시뮬레이터
+# 재난 의료 시뮬레이션 엔진
 #
 # Part 1 / 4
 # ------------------------------------------------------------
-# - import
-# - UI 생성
-# - 입력창
-# - 버튼 배치
+# - Simulation 클래스
+# - 초기화
+# - 시간 관리
+# - 기본 데이터 관리
 # ============================================================
 
-import tkinter as tk
-from tkinter import ttk, messagebox
 
-import random
+from patient import (
+    PatientState,
+    Severity
+)
 
-from map_loader import MapLoader
-from disaster import Disaster
-from hospital import Hospital
-from simulation import Simulation
-from pmedian import solve_pmedian
-from animation import SimulationAnimation
 
 
-class SimulationUI:
+class Simulation:
+    """
+    재난 의료 시뮬레이션 관리자
 
-    def __init__(self):
+    담당 기능
+    ----------------------------
+    - 전체 시간 흐름 관리
+    - 환자 상태 관리
+    - 병원 상태 관리
+    - 결과 데이터 저장
+    """
 
-        self.root = tk.Tk()
 
-        self.root.title("재난 의료시설 배치 시뮬레이터")
 
-        self.root.geometry("1000x700")
+    # ========================================================
+    # 생성자
+    # ========================================================
 
-        self.root.resizable(False, False)
+    def __init__(
+        self,
+        patients,
+        hospitals,
+        map_loader,
+        duration=3600,
+        dt=1
 
-        # -----------------------------
-        # 시뮬레이션 객체
-        # -----------------------------
+    ):
+        
+        self.map_loader = map_loader
 
-        self.map_loader = None
-        self.disaster = None
-        self.simulation = None
 
-        self.candidate_hospitals = []
-        self.selected_hospitals = []
+        # ----------------------------------------------------
+        # 입력 데이터
+        # ----------------------------------------------------
 
-        # -----------------------------
-        # 변수
-        # -----------------------------
+        # 환자 목록
 
-        self.patient_var = tk.IntVar(value=200)
+        self.patients = patients
 
-        self.candidate_var = tk.IntVar(value=15)
 
-        self.selected_var = tk.IntVar(value=5)
+        # 의료시설 목록
 
-        self.time_var = tk.IntVar(value=3600)
+        self.hospitals = hospitals
 
-        self.seed_var = tk.IntVar(value=42)
 
-        # -----------------------------
-        # UI 생성
-        # -----------------------------
 
-        self.create_widgets()
+        # ----------------------------------------------------
+        # 시간 설정
+        # ----------------------------------------------------
 
-    # =====================================================
-    # 위젯 생성
-    # =====================================================
+        # 전체 시뮬레이션 시간(초)
 
-    def create_widgets(self):
+        self.duration = duration
 
-        title = tk.Label(
 
-            self.root,
+        # 시간 증가 단위(초)
 
-            text="재난 의료시설 최적화 시뮬레이터",
+        self.dt = dt
 
-            font=("맑은 고딕", 20, "bold")
 
-        )
+        # 현재 시간
 
-        title.pack(pady=10)
+        self.current_time = 0
 
-        #####################################################
 
-        setting = tk.LabelFrame(
 
-            self.root,
+        # ----------------------------------------------------
+        # 결과 저장
+        # ----------------------------------------------------
 
-            text="시뮬레이션 설정",
 
-            padx=10,
+        # 사망 환자
 
-            pady=10
+        self.dead_patients = []
 
-        )
 
-        setting.pack(fill="x", padx=10)
+        # 치료 완료 환자
 
-        #####################################################
+        self.finished_patients = []
 
-        tk.Label(
 
-            setting,
 
-            text="환자 수"
+        # ----------------------------------------------------
+        # 애니메이션용 기록
+        # ----------------------------------------------------
 
-        ).grid(row=0, column=0, sticky="w")
+        # 시간별 환자 상태 저장
 
-        tk.Entry(
+        self.history = []
 
-            setting,
 
-            textvariable=self.patient_var,
 
-            width=10
+        # ----------------------------------------------------
+        # 통계 데이터
+        # ----------------------------------------------------
 
-        ).grid(row=0, column=1, padx=10)
 
-        #####################################################
+        self.total_steps = 0
 
-        tk.Label(
 
-            setting,
+        self.total_moving = 0
 
-            text="후보 병원 수"
 
-        ).grid(row=1, column=0, sticky="w")
+        self.total_waiting = 0
 
-        tk.Entry(
 
-            setting,
+        self.total_treating = 0
 
-            textvariable=self.candidate_var,
 
-            width=10
 
-        ).grid(row=1, column=1, padx=10)
 
-        #####################################################
+    # ========================================================
+    # 초기 상태 설정
+    # ========================================================
 
-        tk.Label(
+    def initialize(self):
 
-            setting,
+        """
+        시뮬레이션 시작 전 초기화
 
-            text="선택 병원(p)"
+        """
 
-        ).grid(row=2, column=0, sticky="w")
+        self.current_time = 0
 
-        tk.Entry(
 
-            setting,
+        self.dead_patients.clear()
 
-            textvariable=self.selected_var,
 
-            width=10
+        self.finished_patients.clear()
 
-        ).grid(row=2, column=1, padx=10)
 
-        #####################################################
+        self.history.clear()
 
-        tk.Label(
 
-            setting,
 
-            text="시뮬레이션 시간"
+        # 병원 초기화
 
-        ).grid(row=3, column=0, sticky="w")
+        for hospital in self.hospitals:
 
-        tk.Entry(
+            hospital.reset()
 
-            setting,
 
-            textvariable=self.time_var,
 
-            width=10
+        # 환자 상태 초기화
 
-        ).grid(row=3, column=1, padx=10)
+        for patient in self.patients:
 
-        #####################################################
-
-        tk.Label(
-
-            setting,
-
-            text="Random Seed"
-
-        ).grid(row=4, column=0, sticky="w")
-
-        tk.Entry(
-
-            setting,
-
-            textvariable=self.seed_var,
-
-            width=10
-
-        ).grid(row=4, column=1, padx=10)
-
-        #####################################################
-
-        button_frame = tk.Frame(self.root)
-
-        button_frame.pack(pady=15)
-
-        self.map_button = tk.Button(
-
-            button_frame,
-
-            text="지도 불러오기",
-
-            width=18,
-
-            command=self.load_map
-
-        )
-
-        self.map_button.grid(row=0, column=0, padx=5)
-
-        self.prepare_button = tk.Button(
-
-            button_frame,
-
-            text="시뮬레이션 준비",
-
-            width=18,
-
-            command=self.prepare_simulation,
-
-            state="disabled"
-
-        )
-
-        self.prepare_button.grid(row=0, column=1, padx=5)
-
-        self.run_button = tk.Button(
-
-            button_frame,
-
-            text="시뮬레이션 실행",
-
-            width=18,
-
-            command=self.run_simulation,
-
-            state="disabled"
-
-        )
-
-        self.run_button.grid(row=0, column=2, padx=5)
-
-        self.animation_button = tk.Button(
-
-            button_frame,
-
-            text="애니메이션 보기",
-
-            width=18,
-
-            command=self.show_animation,
-
-            state="disabled"
-
-        )
-
-        self.animation_button.grid(row=0, column=3, padx=5)
-
-        self.result_button = tk.Button(
-
-            button_frame,
-
-            text="결과 보기",
-
-            width=18,
-
-            command=self.show_result,
-
-            state="disabled"
-
-        )
-
-        self.result_button.grid(row=0, column=4, padx=5)
-
-        #####################################################
-
-        log_frame = tk.LabelFrame(
-
-            self.root,
-
-            text="상태"
-
-        )
-
-        log_frame.pack(fill="both", expand=True, padx=10, pady=10)
-
-        self.log = tk.Text(
-
-            log_frame,
-
-            height=20
-
-        )
-
-        self.log.pack(fill="both", expand=True)
-
-    # =====================================================
-    # 로그 출력
-    # =====================================================
-
-    def write_log(self, text):
-
-        self.log.insert(tk.END, text + "\n")
-
-        self.log.see(tk.END)
-    # =====================================================
-    # 지도 불러오기
-    # =====================================================
-
-    def load_map(self):
-
-        try:
-
-            self.write_log("OpenStreetMap 불러오는 중...")
-
-            self.map_loader = MapLoader()
-
-            self.map_loader.load_map()
-
-            self.write_log("지도 불러오기 완료")
-
-            self.prepare_button.config(state="normal")
-
-            messagebox.showinfo(
-                "완료",
-                "달서구 지도를 불러왔습니다."
+            patient.state = (
+                PatientState.MOVING
             )
 
-        except Exception as e:
+            patient.dead = False
 
-            messagebox.showerror(
-                "오류",
-                str(e)
+
+
+    # ========================================================
+    # 현재 상태 기록
+    # ========================================================
+
+    def record_state(self):
+
+        """
+        animation.py에서 사용할
+        시간별 상태 저장
+        """
+
+        snapshot = {
+
+
+            "time":
+                self.current_time,
+
+
+            "patients":[],
+
+
+
+            "hospitals":[]
+
+        }
+
+
+
+        # -------------------------
+        # 환자 정보 저장
+        # -------------------------
+
+        for patient in self.patients:
+
+
+            snapshot["patients"].append(
+
+                {
+
+                    "id":
+                        patient.id,
+
+
+                    "x":
+                        patient.x,
+
+
+                    "y":
+                        patient.y,
+
+
+                    "state":
+                        patient.state.value,
+
+
+                    "severity":
+                        patient.severity.value
+
+                }
+
             )
 
 
 
-    # =====================================================
-    # 시뮬레이션 준비
-    # =====================================================
+        # -------------------------
+        # 병원 정보 저장
+        # -------------------------
 
-    def prepare_simulation(self):
+        for hospital in self.hospitals:
 
-        if self.map_loader is None:
 
-            messagebox.showwarning(
-                "경고",
-                "먼저 지도를 불러오세요."
+            snapshot["hospitals"].append(
+
+                {
+
+                    "id":
+                        hospital.id,
+
+
+                    "waiting":
+                        hospital.waiting_count(),
+
+
+                    "treating":
+                        hospital.treating_count()
+
+                }
+
             )
+
+
+
+        self.history.append(
+            snapshot
+        )
+
+
+
+    # ========================================================
+    # 현재 환자 상태 계산
+    # ========================================================
+
+    def update_counter(self):
+
+
+        self.total_moving = 0
+
+        self.total_waiting = 0
+
+        self.total_treating = 0
+
+
+
+        for patient in self.patients:
+
+
+            if patient.state == PatientState.MOVING:
+
+                self.total_moving += 1
+
+
+
+            elif patient.state == PatientState.WAITING:
+
+                self.total_waiting += 1
+
+
+
+            elif patient.state == PatientState.TREATING:
+
+                self.total_treating += 1
+
+
+
+    # ========================================================
+    # 시간 증가
+    # ========================================================
+
+    def increase_time(self):
+
+
+        self.current_time += self.dt
+
+
+        self.total_steps += 1
+
+
+# ============================================================
+# Part 2 / 4 에서 계속
+# ============================================================
+# ============================================================
+# simulation.py
+#
+# Part 2 / 4
+# ------------------------------------------------------------
+# - 환자 이동 처리
+# - 병원 도착 처리
+# - 대기열 등록
+# - 병원 배정 관리
+# ============================================================
+
+
+
+    # ========================================================
+    # 환자 이동 처리
+    # ========================================================
+
+    def update_patient_movement(self):
+
+        """
+        이동 중인 환자를 목표 병원 방향으로 이동
+
+        처리
+        ----------------------------
+        MOVING 상태 환자 이동
+        병원 도착 시 WAITING 변경
+        """
+
+        for patient in self.patients:
+
+
+            # 이동 상태가 아니면 제외
+
+            if patient.state != PatientState.MOVING:
+
+                continue
+
+
+
+            # 이동
+
+            patient.move()
+
+
+
+            # 도착 확인
+
+            if patient.state == PatientState.WAITING:
+
+
+                self.arrive_hospital(
+                    patient
+                )
+
+
+
+    # ========================================================
+    # 병원 도착 처리
+    # ========================================================
+
+    def arrive_hospital(
+        self,
+        patient
+    ):
+
+        """
+        환자가 목표 병원에 도착했을 때 처리
+
+        """
+
+        hospital = (
+            patient.target_hospital
+        )
+
+
+
+        # 목표 병원이 없는 경우
+
+        if hospital is None:
 
             return
 
-        self.write_log("")
 
-        self.write_log("===== 시뮬레이션 준비 =====")
 
-        random.seed(
-            self.seed_var.get()
+        # 병원 대기열 추가
+
+        success = hospital.add_patient(
+            patient
         )
 
-        # ----------------------------------------
-        # 재난 생성
-        # ----------------------------------------
 
-        self.disaster = Disaster(
 
-            width=1000,
+        # -------------------------
+        # 병원이 가득 찬 경우
+        # -------------------------
 
-            height=1000,
+        if not success:
 
-            zone_count=3,
 
-            seed=self.seed_var.get()
+            # 현재 구조에서는
+            # 대기 상태 유지
 
-        )
+            patient.state = (
+                PatientState.WAITING
+            )
 
-        self.write_log("위험지역 생성 완료")
 
-        # ----------------------------------------
-        # 환자 생성
-        # ----------------------------------------
 
-        patients = self.disaster.generate_patients(
+    # ========================================================
+    # 병원 배정
+    # ========================================================
 
-            self.patient_var.get()
+    def assign_hospitals(
+        self,
+        algorithm
+    ):
 
-        )
+        """
+        환자에게 병원 지정
 
-        self.write_log(
-            f"환자 {len(patients)}명 생성"
-        )
+        Parameters
+        ----------
+        algorithm :
+            p-Median 또는 개선 알고리즘 함수
 
-        # ----------------------------------------
-        # 후보 병원 생성
-        # ----------------------------------------
 
-        self.candidate_hospitals = []
+        예:
+        ----------------
+        pmedian.solve_pmedian
+        improved_algorithm.select_hospital
 
-        for i in range(
+        """
 
-            self.candidate_var.get()
 
-        ):
 
-            x, y = self.map_loader.get_random_point()
+        # -------------------------
+        # 전체 병원 선택형 알고리즘
+        # -------------------------
 
-            hospital = Hospital(
+        if callable(algorithm):
 
-                hospital_id=i + 1,
 
-                x=x,
+            result = algorithm(
+                self.patients,
+                self.hospitals
+            )
 
-                y=y,
 
-                capacity=5,
+            return result
 
-                max_queue=50
+
+
+    # ========================================================
+    # 목표 병원 없는 환자 확인
+    # ========================================================
+
+    def check_unassigned_patients(self):
+
+
+        count = 0
+
+
+
+        for patient in self.patients:
+
+
+            if patient.target_hospital is None:
+
+                count += 1
+
+
+
+        return count
+
+
+
+    # ========================================================
+    # 이동 가능한 환자 수
+    # ========================================================
+
+    def moving_count(self):
+
+
+        count = 0
+
+
+
+        for patient in self.patients:
+
+
+            if patient.state == PatientState.MOVING:
+
+                count += 1
+
+
+
+        return count
+
+
+
+    # ========================================================
+    # 대기 환자 수
+    # ========================================================
+
+    def waiting_count(self):
+
+
+        count = 0
+
+
+
+        for patient in self.patients:
+
+
+            if patient.state == PatientState.WAITING:
+
+                count += 1
+
+
+
+        return count
+
+
+
+    # ========================================================
+    # 치료 중 환자 수
+    # ========================================================
+
+    def treating_count(self):
+
+
+        count = 0
+
+
+
+        for patient in self.patients:
+
+
+            if patient.state == PatientState.TREATING:
+
+                count += 1
+
+
+
+        return count
+
+
+
+# ============================================================
+# Part 3 / 4 에서 계속
+# ============================================================
+# ============================================================
+# simulation.py
+#
+# Part 3 / 4
+# ------------------------------------------------------------
+# - 병원 치료 진행
+# - 생존시간 업데이트
+# - 사망 처리
+# - 시간 단위 진행(step)
+# ============================================================
+
+
+
+    # ========================================================
+    # 병원 상태 업데이트
+    # ========================================================
+
+    def update_hospitals(self):
+
+        """
+        모든 의료시설 업데이트
+
+        처리
+        ----------------------------
+        - 치료 진행
+        - 치료 완료
+        - 다음 환자 치료 시작
+        """
+
+        for hospital in self.hospitals:
+
+
+            hospital.update(
+
+                self.dt,
+
+                self.current_time
 
             )
 
-            self.candidate_hospitals.append(
 
-                hospital
+
+    # ========================================================
+    # 환자 생존시간 업데이트
+    # ========================================================
+
+    def update_patient_survival(self):
+
+        """
+        환자 치료 제한시간 감소
+
+        RED / YELLOW 환자의
+        제한시간 초과 처리
+        """
+
+        for patient in self.patients:
+
+
+            # 이미 종료된 환자 제외
+
+            if patient.state in (
+
+                PatientState.DEAD,
+
+                PatientState.FINISHED
+
+            ):
+
+                continue
+
+
+
+            before_state = (
+                patient.state
+            )
+
+
+
+            patient.update_survival(
+
+                self.dt
 
             )
 
-        self.write_log(
 
-            f"후보 병원 {len(self.candidate_hospitals)}개 생성"
 
-        )
+            # 새롭게 사망한 환자 기록
 
-        # ----------------------------------------
-        # p-Median
-        # ----------------------------------------
+            if (
 
-        self.selected_hospitals = solve_pmedian(
+                patient.state == PatientState.DEAD
 
-            patients,
+                and
 
-            self.candidate_hospitals,
+                before_state != PatientState.DEAD
 
-            self.selected_var.get()
+            ):
 
-        )
 
-        self.write_log(
+                self.dead_patients.append(
 
-            f"최종 병원 {len(self.selected_hospitals)}개 선택"
+                    patient
 
-        )
+                )
 
-        # ----------------------------------------
-        # Simulation 생성
-        # ----------------------------------------
 
-        self.simulation = Simulation(
 
-            patients,
+    # ========================================================
+    # 치료 완료 환자 기록
+    # ========================================================
 
-            self.selected_hospitals,
+    def update_finished_patients(self):
 
-            self.map_loader,
 
-            duration=self.time_var.get(),
+        self.finished_patients.clear()
 
-            dt=1
 
-        )
 
-        self.write_log("Simulation 생성 완료")
+        for patient in self.patients:
 
-        self.run_button.config(
 
-            state="normal"
+            if (
 
-        )
+                patient.state
 
-        messagebox.showinfo(
+                ==
 
-            "완료",
+                PatientState.FINISHED
 
-            "시뮬레이션 준비가 완료되었습니다."
+            ):
 
-        )
 
-    # =====================================================
-    # 시뮬레이션 실행
-    # =====================================================
+                self.finished_patients.append(
 
-    def run_simulation(self):
+                    patient
 
-        if self.simulation is None:
+                )
 
-            messagebox.showwarning(
 
-                "경고",
 
-                "먼저 시뮬레이션을 준비하세요."
+    # ========================================================
+    # 한 번의 시간 진행
+    # ========================================================
 
-            )
+    def step(self):
 
-            return
+        """
+        시뮬레이션 1초 진행
 
-        self.write_log("")
 
-        self.write_log("===== 시뮬레이션 시작 =====")
+        순서
+        ----------------------------
+        1. 환자 이동
+        2. 병원 처리
+        3. 치료 진행
+        4. 생존시간 감소
+        5. 기록 저장
+        6. 시간 증가
 
-        self.root.update()
+        """
 
-        # 실행
 
-        result = self.simulation.run()
 
-        self.write_log("")
+        # 1.
+        # 환자 이동
 
-        self.write_log("===== 시뮬레이션 종료 =====")
+        self.update_patient_movement()
 
-        self.write_log(
 
-            f"총 환자 : {result['total_patients']}명"
 
-        )
+        # 2.
+        # 병원 치료
 
-        self.write_log(
+        self.update_hospitals()
 
-            f"사망자 : {result['dead_patients']}명"
 
-        )
 
-        self.write_log(
+        # 3.
+        # 사망 판단
 
-            f"치료 완료 : {result['finished_patients']}명"
+        self.update_patient_survival()
 
-        )
 
-        self.write_log(
 
-            f"생존율 : {result['survival_rate']*100:.2f}%"
+        # 4.
+        # 완료 환자 갱신
 
-        )
+        self.update_finished_patients()
 
-        self.write_log(
 
-            f"평균 이동시간 : {result['average_moving_time']:.2f}초"
 
-        )
+        # 5.
+        # 상태 기록
 
-        self.write_log(
+        self.record_state()
 
-            f"평균 대기시간 : {result['average_waiting_time']:.2f}초"
 
-        )
 
-        self.animation_button.config(
+        # 6.
+        # 상태 카운트
 
-            state="normal"
+        self.update_counter()
 
-        )
 
-        self.result_button.config(
 
-            state="normal"
+        # 7.
+        # 시간 증가
 
-        )
+        self.increase_time()
 
-        messagebox.showinfo(
 
-            "완료",
 
-            "시뮬레이션이 완료되었습니다."
+    # ========================================================
+    # 종료 여부 확인
+    # ========================================================
 
-        )
+    def is_finished(self):
 
 
+        # 시간이 끝난 경우
 
-    # =====================================================
-    # 애니메이션 보기
-    # =====================================================
+        if self.current_time >= self.duration:
 
-    def show_animation(self):
+            return True
 
-        if self.simulation is None:
 
-            return
 
-        if len(self.simulation.history) == 0:
+        # 모든 환자가 종료된 경우
 
-            messagebox.showwarning(
+        active = 0
 
-                "경고",
 
-                "먼저 시뮬레이션을 실행하세요."
 
-            )
+        for patient in self.patients:
 
-            return
 
-        self.write_log("애니메이션 실행")
+            if patient.state not in (
 
-        animation = SimulationAnimation(
+                PatientState.DEAD,
 
-            self.simulation,
+                PatientState.FINISHED
 
-        )
+            ):
 
-        animation.show()
+                active += 1
 
 
 
-    # =====================================================
-    # 결과 보기
-    # =====================================================
+        if active == 0:
 
-    def show_result(self):
+            return True
 
-        if self.simulation is None:
 
-            return
 
-        result = self.simulation.get_result()
+        return False
 
-        text = ""
 
-        text += "========== 시뮬레이션 결과 ==========\n\n"
 
-        text += f"전체 환자 : {result['total_patients']}명\n"
+# ============================================================
+# Part 4 / 4 에서 계속
+# ============================================================
+# ============================================================
+# simulation.py
+#
+# Part 4 / 4
+# ------------------------------------------------------------
+# - 전체 실행
+# - 결과 분석
+# - 통계 반환
+# - 출력
+# ============================================================
 
-        text += f"사망자 : {result['dead_patients']}명\n"
 
-        text += f"치료 완료 : {result['finished_patients']}명\n"
 
-        text += f"생존율 : {result['survival_rate']*100:.2f}%\n\n"
-
-        text += f"평균 이동시간 : {result['average_moving_time']:.2f}초\n"
-
-        text += f"평균 대기시간 : {result['average_waiting_time']:.2f}초\n"
-
-        text += f"평균 치료 시작시간 : {result['average_start_time']:.2f}초\n"
-
-        text += "\n========== 병원별 통계 ==========\n\n"
-
-        for hospital in result["hospital_statistics"]:
-
-            text += (
-
-                f"Hospital {hospital['hospital_id']}\n"
-
-                f"  완료 환자 : {hospital['completed']}명\n"
-
-                f"  대기 환자 : {hospital['waiting']}명\n"
-
-                f"  치료중 : {hospital['treating']}명\n"
-
-                f"  평균 대기시간 : "
-
-                f"{hospital['average_waiting_time']:.2f}초\n"
-
-                f"  평균 치료시간 : "
-
-                f"{hospital['average_treatment_time']:.2f}초\n"
-
-                f"  최대 대기열 : "
-
-                f"{hospital['max_queue_length']}명\n"
-
-                f"  병목률 : "
-
-                f"{hospital['congestion_ratio']*100:.2f}%\n\n"
-
-            )
-
-        window = tk.Toplevel(self.root)
-
-        window.title("시뮬레이션 결과")
-
-        window.geometry("700x600")
-
-        result_box = tk.Text(
-
-            window,
-
-            wrap="word",
-
-            font=("Consolas", 10)
-
-        )
-
-        result_box.pack(
-
-            fill="both",
-
-            expand=True
-
-        )
-
-        result_box.insert(
-
-            tk.END,
-
-            text
-
-        )
-
-        result_box.config(
-
-            state="disabled"
-
-        )
-
-    # =====================================================
-    # 프로그램 실행
-    # =====================================================
+    # ========================================================
+    # 전체 시뮬레이션 실행
+    # ========================================================
 
     def run(self):
 
-        self.root.mainloop()
+        """
+        시뮬레이션 전체 실행
+
+        """
+
+        print("=" * 60)
+
+        print("재난 의료 시뮬레이션 시작")
+
+        print("=" * 60)
 
 
-# =========================================================
-# main
-# =========================================================
+
+        # 초기화
+
+        self.initialize()
+
+
+
+        # 반복 실행
+
+        while not self.is_finished():
+
+
+            self.step()
+
+
+
+        # 마지막 결과 갱신
+
+        self.update_finished_patients()
+
+
+
+        result = self.get_result()
+
+
+
+        print("=" * 60)
+
+        print("재난 의료 시뮬레이션 종료")
+
+        print("=" * 60)
+
+
+
+        return result
+
+
+
+
+    # ========================================================
+    # 생존율 계산
+    # ========================================================
+
+    def survival_rate(self):
+
+
+        total = len(
+            self.patients
+        )
+
+
+        if total == 0:
+
+            return 0
+
+
+
+        alive = total - len(
+            self.dead_patients
+        )
+
+
+        return alive / total
+
+
+
+
+    # ========================================================
+    # 평균 치료 시작 시간
+    # ========================================================
+
+    def average_start_time(self):
+
+
+        total = 0
+
+        count = 0
+
+
+
+        for patient in self.patients:
+
+
+            if patient.start_treatment_time is not None:
+
+
+                total += (
+                    patient.start_treatment_time
+                    -
+                    patient.created_time
+                )
+
+
+                count += 1
+
+
+
+        if count == 0:
+
+            return 0
+
+
+
+        return total / count
+
+
+
+
+    # ========================================================
+    # 평균 이동시간
+    # ========================================================
+
+    def average_moving_time(self):
+
+
+        total = 0
+
+        count = 0
+
+
+
+        for patient in self.patients:
+
+
+            if patient.arrival_time is not None:
+
+
+                total += (
+
+                    patient.arrival_time
+
+                    -
+
+                    patient.created_time
+
+                )
+
+
+                count += 1
+
+
+
+        if count == 0:
+
+            return 0
+
+
+
+        return total / count
+
+
+
+
+    # ========================================================
+    # 평균 대기시간
+    # ========================================================
+
+    def average_waiting_time(self):
+
+
+        total = 0
+
+        count = 0
+
+
+
+        for hospital in self.hospitals:
+
+
+            total += (
+                hospital.total_waiting_time
+            )
+
+
+            count += (
+                hospital.total_completed
+            )
+
+
+
+        if count == 0:
+
+            return 0
+
+
+
+        return total / count
+
+
+
+
+    # ========================================================
+    # 병원별 통계
+    # ========================================================
+
+    def hospital_statistics(self):
+
+
+        result = []
+
+
+
+        for hospital in self.hospitals:
+
+
+            result.append(
+
+                hospital.get_statistics()
+
+            )
+
+
+
+        return result
+
+
+
+
+    # ========================================================
+    # 최종 결과
+    # ========================================================
+
+    def get_result(self):
+
+
+        return {
+
+
+            # 전체 환자
+
+            "total_patients":
+
+                len(self.patients),
+
+
+
+            # 사망자
+
+            "dead_patients":
+
+                len(self.dead_patients),
+
+
+
+            # 치료 완료
+
+            "finished_patients":
+
+                len(self.finished_patients),
+
+
+
+            # 생존율
+
+            "survival_rate":
+
+                self.survival_rate(),
+
+
+
+            # 평균 이동시간
+
+            "average_moving_time":
+
+                self.average_moving_time(),
+
+
+
+            # 평균 대기시간
+
+            "average_waiting_time":
+
+                self.average_waiting_time(),
+
+
+
+            # 평균 치료 시작시간
+
+            "average_start_time":
+
+                self.average_start_time(),
+
+
+
+            # 종료 시간
+
+            "simulation_time":
+
+                self.current_time,
+
+
+
+            # 병원별 정보
+
+            "hospital_statistics":
+
+                self.hospital_statistics()
+
+        }
+
+
+
+
+    # ========================================================
+    # 결과 출력
+    # ========================================================
+
+    def print_result(self):
+
+
+        result = self.get_result()
+
+
+
+        print("\n")
+
+        print("=" * 60)
+
+        print("시뮬레이션 결과")
+
+        print("=" * 60)
+
+
+
+        print(
+            f"전체 환자 : "
+            f"{result['total_patients']}명"
+        )
+
+
+        print(
+            f"사망자 : "
+            f"{result['dead_patients']}명"
+        )
+
+
+        print(
+            f"치료 완료 : "
+            f"{result['finished_patients']}명"
+        )
+
+
+        print(
+            f"생존율 : "
+            f"{result['survival_rate']*100:.2f}%"
+        )
+
+
+        print(
+            f"평균 이동시간 : "
+            f"{result['average_moving_time']:.2f}초"
+        )
+
+
+        print(
+            f"평균 대기시간 : "
+            f"{result['average_waiting_time']:.2f}초"
+        )
+
+
+        print(
+            f"평균 치료 시작시간 : "
+            f"{result['average_start_time']:.2f}초"
+        )
+
+
+        print("=" * 60)
+
+
+
+        print("\n[병원별 통계]")
+
+
+        for hospital in result["hospital_statistics"]:
+
+
+            print(
+                hospital
+            )
+
+
+
+# ============================================================
+# 테스트 실행
+# ============================================================
 
 if __name__ == "__main__":
 
-    app = SimulationUI()
 
-    app.run()
+    print(
+        "simulation.py module test"
+    )
+
+
+
+# ============================================================
+# End of simulation.py
+# ============================================================
