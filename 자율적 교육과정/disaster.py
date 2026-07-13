@@ -109,15 +109,22 @@ class Disaster:
 
     def __init__(
         self,
-        width,
-        height,
+        west,
+        east,
+        south,
+        north,
         zone_count=3,
         seed=None
     ):
 
+        self.west = west
+        self.east = east
+        self.south = south
+        self.north = north
 
-        self.width = width
-        self.height = height
+        self.width = east - west
+        self.height = north - south
+
 
 
         # 실험 재현용
@@ -167,15 +174,15 @@ class Disaster:
 
 
 
-            x = random.randint(
-                100,
-                int(self.width-100)
+            x = random.uniform(
+                self.west,
+                self.east
             )
 
-            y = random.randint(
-                100,
-                int(self.height-100)
-            )
+            y = random.uniform(
+                self.south,
+                self.north
+)
 
 
             radius = random.randint(
@@ -315,34 +322,32 @@ class Disaster:
         else:
 
 
-            x = random.randint(
-                0,
-                self.width
+            x = random.uniform(
+                self.west,
+                self.east
             )
 
-
-            y = random.randint(
-                0,
-                self.height
-            )
+            y = random.uniform(
+                self.south,
+                self.north
+            )       
 
 
 
         # 지도 밖 방지
 
         x = max(
-            0,
+            self.west,
             min(
-                self.width,
+                self.east,
                 x
             )
         )
 
-
         y = max(
-            0,
+            self.south,
             min(
-                self.height,
+                self.north,
                 y
             )
         )
