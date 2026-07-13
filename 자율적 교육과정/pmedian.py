@@ -1,24 +1,19 @@
 # ============================================================
 # pmedian.py
 #
-# p-Median 알고리즘
+# p-Median + 병목 고려 알고리즘
 #
 # 기능
 # ------------------------------------------------------------
 # - 후보 의료시설 중 p개 선택
 # - 환자 이동거리 최소화
-# - 기존 재난 의료시설 배치 모델
-#
-# 특징
-# ------------------------------------------------------------
-# - 대기시간 고려 X
-# - 병목 고려 X
-# - 거리만 고려
+# - 병원 수용량 고려
+# - 예상 대기시간 고려
+# - 병목 발생 방지
 # ============================================================
 
 
 import math
-import random
 
 
 
@@ -26,10 +21,7 @@ import random
 # 거리 계산
 # ============================================================
 
-def distance(
-    patient,
-    hospital
-):
+def distance(patient, hospital):
 
     dx = patient.x - hospital.x
     dy = patient.y - hospital.y
@@ -42,46 +34,7 @@ def distance(
 
 
 # ============================================================
-# 총 이동거리 계산
-# ============================================================
-
-def calculate_total_distance(
-    patients,
-    hospitals
-):
-
-    total = 0
-
-
-    for patient in patients:
-
-        min_distance = float("inf")
-
-
-        for hospital in hospitals:
-
-            d = distance(
-                patient,
-                hospital
-            )
-
-
-            if d < min_distance:
-
-                min_distance = d
-
-
-        total += min_distance
-
-
-    return total
-
-
-
-
-
-# ============================================================
-# 환자 병원 배정
+# 병원별 환자 배정
 # ============================================================
 
 def assign_patients(
@@ -90,17 +43,19 @@ def assign_patients(
 ):
 
 
+    hospital_patients = {
+        h.id: []
+        for h in hospitals
+    }
+
+
     for patient in patients:
 
-
         nearest = None
-
         min_distance = float("inf")
 
 
-
         for hospital in hospitals:
-
 
             d = distance(
                 patient,
@@ -120,20 +75,173 @@ def assign_patients(
         )
 
 
+        hospital_patients[
+            nearest.id
+        ].append(
+            patient
+        )
 
-    return patients
 
+    return hospital_patients
 
 
 
 
 # ============================================================
-# 초기 병원 선택
+# 병목 비용 계산
 #
-# Greedy 방식
+# 환자수 / 처리능력
 #
-# 실제 최적해는 MILP 등을 사용하지만
-# 시뮬레이션에서는 계산량 때문에 사용
+# 1 이하 : 정상
+# 1 초과 : 병목
+# ============================================================
+
+def calculate_congestion_cost(
+    hospital,
+    assigned_patients
+):
+
+
+    patients = len(
+        assigned_patients
+    )
+
+
+    capacity = getattr(
+        hospital,
+        "capacity",
+        10
+    )
+
+
+    ratio = patients / capacity
+
+
+
+    if ratio <= 1:
+
+        return ratio
+
+
+
+    else:
+
+        # 초과하면 급격히 증가
+
+        return ratio ** 2
+
+
+
+
+# ============================================================
+# 예상 대기시간 계산
+#
+# M/M/1 형태 단순 모델
+#
+# 대기시간 =
+# 환자수 / 처리속도
+# ============================================================
+
+def calculate_waiting_time(
+    hospital,
+    assigned_patients
+):
+
+
+    patients = len(
+        assigned_patients
+    )
+
+
+    service_rate = getattr(
+        hospital,
+        "service_rate",
+        1
+    )
+
+
+    return patients / service_rate
+
+
+
+
+# ============================================================
+# 새로운 목적함수
+#
+# 거리 + 대기 + 병목
+# ============================================================
+
+def calculate_total_cost(
+    patients,
+    hospitals,
+    alpha=5,
+    beta=20
+):
+
+
+    assignments = assign_patients(
+        patients,
+        hospitals
+    )
+
+
+    total_distance = 0
+
+    congestion = 0
+
+    waiting = 0
+
+
+
+    for patient in patients:
+
+
+        total_distance += min(
+            distance(
+                patient,
+                h
+            )
+            for h in hospitals
+        )
+
+
+
+    for hospital in hospitals:
+
+
+        assigned = assignments[
+            hospital.id
+        ]
+
+
+        congestion += calculate_congestion_cost(
+            hospital,
+            assigned
+        )
+
+
+        waiting += calculate_waiting_time(
+            hospital,
+            assigned
+        )
+
+
+
+    return (
+        total_distance
+        +
+        alpha * waiting
+        +
+        beta * congestion
+    )
+
+
+
+
+# ============================================================
+# Greedy 초기 선택
+#
+# 병목 포함
 # ============================================================
 
 def greedy_initial_selection(
@@ -144,7 +252,6 @@ def greedy_initial_selection(
 
 
     selected = []
-
 
     remaining = candidates.copy()
 
@@ -162,13 +269,16 @@ def greedy_initial_selection(
         for candidate in remaining:
 
 
-            temp = selected + [candidate]
+            temp = selected + [
+                candidate
+            ]
 
 
-            score = calculate_total_distance(
+            score = calculate_total_cost(
                 patients,
                 temp
             )
+
 
 
             if score < best_score:
@@ -220,12 +330,10 @@ def solve_pmedian(
     )
 
 
-
     assign_patients(
         patients,
         selected
     )
-
 
 
     return selected
@@ -245,11 +353,15 @@ def print_result(
 
     print("="*50)
 
-    print("p-Median 결과")
+    print(
+        "병목 고려 p-Median 결과"
+    )
+
 
     print(
-        f"선택된 의료시설 : {len(hospitals)}개"
+        f"선택 의료시설 : {len(hospitals)}개"
     )
+
 
 
     for hospital in hospitals:
@@ -265,15 +377,12 @@ def print_result(
 
 
 
-
-
 # ============================================================
-# 테스트용 실행
+# 테스트
 # ============================================================
 
 if __name__ == "__main__":
 
-
     print(
-        "p-Median module test"
+        "p-Median + Congestion module test"
     )
