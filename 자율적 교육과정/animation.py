@@ -209,7 +209,9 @@ class SimulationAnimation:
 
                 [],
 
-                s=30
+                s=30,
+
+                c="red"
 
             )
 
@@ -369,7 +371,7 @@ class SimulationAnimation:
 
         for patient in data["patients"]:
 
-
+            print(patient)
             x.append(
                 patient["x"]
             )
@@ -396,6 +398,11 @@ class SimulationAnimation:
 
 
         # 환자 위치 갱신
+        
+        print("환자 수:", len(x))
+        print("x =", x[:5])
+        print("y =", y[:5])
+
 
         self.patient_scatter.set_offsets(
 
