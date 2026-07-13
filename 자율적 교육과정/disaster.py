@@ -169,12 +169,12 @@ class Disaster:
 
             x = random.randint(
                 100,
-                self.width-100
+                int(self.width-100)
             )
 
             y = random.randint(
                 100,
-                self.height-100
+                int(self.height-100)
             )
 
 
