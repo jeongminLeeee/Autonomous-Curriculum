@@ -50,6 +50,11 @@ class MapLoader:
             simplify=True
         )
 
+
+        self.graph = ox.project_graph(
+            self.graph
+        )
+
         self.nodes, self.edges = ox.graph_to_gdfs(self.graph)
 
         self._set_boundary()
