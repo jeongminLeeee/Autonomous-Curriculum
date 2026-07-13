@@ -16,6 +16,8 @@ from tkinter import ttk, messagebox
 
 import random
 
+from shapely.lib import boundary
+
 from map_loader import MapLoader
 from disaster import Disaster
 from hospital import Hospital
@@ -375,16 +377,16 @@ class SimulationUI:
         # 재난 생성
         # ----------------------------------------
 
+        boundary = self.map_loader.get_boundary()
+        print(boundary)
+
         self.disaster = Disaster(
-
-            width=1000,
-
-            height=1000,
-
+            west=boundary["west"],
+            east=boundary["east"],
+            south=boundary["south"],
+            north=boundary["north"],
             zone_count=3,
-
             seed=self.seed_var.get()
-
         )
 
         self.write_log("위험지역 생성 완료")
